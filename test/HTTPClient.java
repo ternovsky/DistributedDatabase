@@ -16,15 +16,15 @@ public class HTTPClient {
 
     public static void main(String[] args) throws IOException {
 
-        int count = 1;
+        int count = 10;
         Map<String, String> keyValue = new HashMap<String, String>();
         Random random = new Random();
         for (int i = 0; i < count; i++) {
-            int randInt = random.nextInt(10*count);
+            int randInt = random.nextInt(10 * count);
             keyValue.put("key" + randInt, "value=" + randInt);
         }
 
-        String[] ports = {"1001"/*, "1002", "1003"*/};
+        String[] ports = {"1001", "1002", "1003"};
 
         for (Map.Entry<String, String> keyValueEntry : keyValue.entrySet()) {
 
@@ -42,30 +42,30 @@ public class HTTPClient {
             connection.disconnect();
         }
 
-//        for (String port : ports) {
-//            for (Map.Entry<String, String> keyValueEntry : keyValue.entrySet()) {
-//                String key = keyValueEntry.getKey();
-//                String value = keyValueEntry.getValue();
-//
-//                URL serverAddress = new URL("http://localhost:" + port + "/data/" + key);
-//                HttpURLConnection connection = (HttpURLConnection) serverAddress.openConnection();
-//                connection.setRequestMethod("GET");
-//                connection.setDoOutput(true);
-//                connection.connect();
-//
-//                InputStream inputStream = connection.getInputStream();
-//                BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
-//                StringBuilder builder = new StringBuilder();
-//                String line;
-//                while ((line = bufferedReader.readLine()) != null) {
-//                    builder.append(line + '\n');
-//                }
-//                if (!builder.toString().contains(value)) {
-//                    System.err.println("Key: " + key + ", Value: " + value + ", Gotten value: " + builder.toString());
-//                }
-//                inputStream.close();
-//                connection.disconnect();
-//            }
-//        }
+        for (String port : ports) {
+            for (Map.Entry<String, String> keyValueEntry : keyValue.entrySet()) {
+                String key = keyValueEntry.getKey();
+                String value = keyValueEntry.getValue();
+
+                URL serverAddress = new URL("http://localhost:" + port + "/data/" + key);
+                HttpURLConnection connection = (HttpURLConnection) serverAddress.openConnection();
+                connection.setRequestMethod("GET");
+                connection.setDoOutput(true);
+                connection.connect();
+
+                InputStream inputStream = connection.getInputStream();
+                BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
+                StringBuilder builder = new StringBuilder();
+                String line;
+                while ((line = bufferedReader.readLine()) != null) {
+                    builder.append(line).append('\n');
+                }
+                if (!builder.toString().contains(value)) {
+                    System.err.println("Key: " + key + ", Value: " + value + ", Gotten value: " + builder.toString());
+                }
+                inputStream.close();
+                connection.disconnect();
+            }
+        }
     }
 }

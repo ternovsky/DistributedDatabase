@@ -1,9 +1,6 @@
 package ternovsky;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.net.InetSocketAddress;
 import java.util.regex.Pattern;
 
@@ -26,7 +23,7 @@ public class Helper {
         return new InetSocketAddress(hostPortPair[0], Integer.parseInt(hostPortPair[1]));
     }
 
-    public static byte[] getBytesFromOutputStream(InputStream inputStream) throws IOException {
+    public static byte[] getBytesFromInputStream(InputStream inputStream) throws IOException {
 
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         byte[] buffer = new byte[1024];
@@ -47,15 +44,24 @@ public class Helper {
         return builder.toString();
     }
 
-    public static int sizeOf(Object obj) throws IOException {
+    public static byte[] objectToByteArray(Serializable serializable) throws IOException {
 
         ByteArrayOutputStream byteOutputStream = new ByteArrayOutputStream();
         ObjectOutputStream objectOutputStream = new ObjectOutputStream(byteOutputStream);
-
-        objectOutputStream.writeObject(obj);
+        objectOutputStream.writeObject(serializable);
         objectOutputStream.flush();
         objectOutputStream.close();
 
-        return byteOutputStream.toByteArray().length;
+        return byteOutputStream.toByteArray();
+    }
+
+    public static Serializable byteArrayToObject(byte[] bytes) throws IOException, ClassNotFoundException {
+
+        ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes);
+        ObjectInputStream objectInputStream = new ObjectInputStream(byteArrayInputStream);
+        Serializable serializable = (Serializable) objectInputStream.readObject();
+        objectInputStream.close();
+
+        return serializable;
     }
 }

@@ -5,7 +5,6 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
 import java.io.*;
-import java.lang.instrument.Instrumentation;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.URL;
@@ -51,10 +50,12 @@ public class ServerNode {
             long time = System.currentTimeMillis();
             System.out.println("Server started at " + new Date(time) + " on " + address);
 
-//            for (InetSocketAddress nodeAddress : nodeAddresses) {
-//                data.putAll(getRecords(nodeAddress, time, address));
-//            }
-
+            for (InetSocketAddress nodeAddress : nodeAddresses) {
+                Map<String, Value> records = getRecords(nodeAddress, time, address);
+                if (records != null) {
+                    data.putAll(records);
+                }
+            }
         } catch (Exception e) {
             System.err.println("Server didn't start " + e.getMessage());
         }
@@ -76,13 +77,16 @@ public class ServerNode {
             connection.setRequestMethod(GET);
             connection.setDoOutput(true);
             connection.connect();
-            ObjectInputStream objectInputStream = new ObjectInputStream(connection.getInputStream());
-            Map<String, Value> keyValue = (Map<String, Value>) objectInputStream.readObject();
+            InputStream inputStream = connection.getInputStream();
+            Map<String, Value> keyValue =
+                    (Map<String, Value>) Helper.byteArrayToObject(Helper.getBytesFromInputStream(inputStream));
+            data.putAll(keyValue);
             System.err.println(keyValue.size() + " records were gotten from " + nodeAddress);
-            objectInputStream.close();
+            inputStream.close();
             connection.disconnect();
 
             return keyValue;
+
         } catch (Exception e) {
             System.err.println("Records weren't gotten from " + nodeAddress + ". " + e.getMessage());
         }
@@ -104,18 +108,19 @@ public class ServerNode {
             connection.setDoOutput(true);
             connection.connect();
 
-            ObjectOutputStream objectOutputStream = new ObjectOutputStream(connection.getOutputStream());
-            objectOutputStream.writeObject(value);
-            objectOutputStream.flush();
-            objectOutputStream.close();
+            byte[] bytes = Helper.objectToByteArray(value);
+            OutputStream outputStream = connection.getOutputStream();
+            outputStream.write(bytes);
+            outputStream.flush();
+            outputStream.close();
 
-            System.out.println("The record with key '" + key + "' was sent to " +
+            System.out.println("The record with key '" + key + "' has been sent to " +
                     serverAddress + ". Response code: " + connection.getResponseCode());
             connection.getResponseCode();
             connection.disconnect();
         } catch (Exception e) {
             System.err.println("The record with key '" + key +
-                    "' wasn't sent to " + serverAddress + ". " + e.getMessage());
+                    "' hasn't been sent to " + serverAddress + ". " + e.getMessage());
         }
     }
 
@@ -132,15 +137,15 @@ public class ServerNode {
             connection.setRequestMethod(GET);
             connection.setDoOutput(true);
             connection.connect();
-            ObjectInputStream objectInputStream = new ObjectInputStream(connection.getInputStream());
-            Value value = (Value) objectInputStream.readObject();
-            System.out.println("The record with key '" + key + "' was gotten from " + serverAddress);
+            InputStream inputStream = connection.getInputStream();
+            Value value = (Value) Helper.byteArrayToObject(Helper.getBytesFromInputStream(inputStream));
+            System.out.println("The record with key '" + key + "' has been gotten from " + serverAddress);
             connection.disconnect();
 
             return value;
         } catch (Exception e) {
             System.err.println("The record with key '" + key +
-                    "' wasn't gotten from " + serverAddress + ". " + e.getMessage());
+                    "' hasn't been gotten from " + serverAddress + ". " + e.getMessage());
         }
 
         return null;
@@ -179,17 +184,26 @@ public class ServerNode {
                             value = getRecordFromAnotherNode(Helper.toString(nodeAddress), key);
                             if (value != null) {
                                 data.put(key, value);
-                                System.out.println("The record with key '" + key + "' was saved");
+                                System.out.println("The record with key '" + key + "' has been saved");
                                 break;
                             }
                         }
                     }
 
                     if (value != null) {
-                        ObjectOutputStream objectOutputStream = new ObjectOutputStream(exchange.getResponseBody());
-                        exchange.sendResponseHeaders(SUCCESS, Helper.sizeOf(value));
-                        objectOutputStream.writeObject(value);
-                        objectOutputStream.close();
+                        if (isDataRequest) {
+                            byte[] bytes = value.getBytes();
+                            OutputStream outputStream = exchange.getResponseBody();
+                            exchange.sendResponseHeaders(SUCCESS, bytes.length);
+                            outputStream.write(bytes);
+                            outputStream.close();
+                        } else {
+                            byte[] bytes = Helper.objectToByteArray(value);
+                            OutputStream outputStream = exchange.getResponseBody();
+                            exchange.sendResponseHeaders(SUCCESS, bytes.length);
+                            outputStream.write(bytes);
+                            outputStream.close();
+                        }
                     } else {
                         exchange.sendResponseHeaders(NOT_FOUND, 0);
                         exchange.getResponseBody().close();
@@ -200,19 +214,20 @@ public class ServerNode {
                     Value value = data.get(key);
 
                     if (isDataRequest) {
-                        byte[] bytes = Helper.getBytesFromOutputStream(exchange.getRequestBody());
-                        data.put(key, new Value(bytes, System.currentTimeMillis()));
+                        byte[] bytes = Helper.getBytesFromInputStream(exchange.getRequestBody());
+                        value = new Value(bytes, System.currentTimeMillis());
+                        data.put(key, value);
                     } else {
-                        ObjectInputStream objectInputStream = new ObjectInputStream(exchange.getRequestBody());
+                        InputStream inputStream = exchange.getRequestBody();
                         try {
-                            data.put(key, (Value) objectInputStream.readObject());
+                            byte[] bytes = Helper.getBytesFromInputStream(inputStream);
+                            value = (Value) Helper.byteArrayToObject(bytes);
+                            data.put(key, value);
                         } catch (ClassNotFoundException e) {
-                            e.printStackTrace();
-                        } finally {
-                            objectInputStream.close();
+                            inputStream.close();
                         }
                     }
-                    System.out.println("The record with key '" + key + "' was created");
+                    System.out.println("The record with key '" + key + "' has been created");
 
                     if (value == null) {
                         exchange.sendResponseHeaders(CREATED, 0);
@@ -229,7 +244,6 @@ public class ServerNode {
             }
 
             if (strings.length == 4 && isInteractionRequest) {
-                InetSocketAddress address = Helper.parseHostPort(strings[2]);
                 long time = Long.parseLong(strings[3]);
                 Map<String, Value> responseMap = new HashMap<String, Value>();
                 for (Map.Entry<String, Value> keyValueEntry : data.entrySet()) {
@@ -237,24 +251,30 @@ public class ServerNode {
                         responseMap.put(keyValueEntry.getKey(), keyValueEntry.getValue());
                     }
                 }
+                byte[] bytes = Helper.objectToByteArray((Serializable) responseMap);
+                OutputStream outputStream = exchange.getResponseBody();
+                exchange.sendResponseHeaders(SUCCESS, bytes.length);
+                outputStream.write(bytes);
+                outputStream.close();
             }
         }
     }
 
-    private class Value implements Serializable {
+    private static class Value implements Serializable {
 
         private byte[] bytes;
         private long time;
 
         public Value(byte[] bytes, long time) {
             this.bytes = bytes;
+            this.time = time;
         }
 
-        private byte[] getBytes() {
+        public byte[] getBytes() {
             return bytes;
         }
 
-        private long getTime() {
+        public long getTime() {
             return time;
         }
 
